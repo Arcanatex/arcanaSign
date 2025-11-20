@@ -5,6 +5,8 @@ name: documenso-production
 services:
   database:
     image: postgres:15
+    ports:
+    - "5435:5432"
     volumes:
       - database:/var/lib/postgresql/data
     environment:
@@ -90,9 +92,14 @@ services:
         # Otherwise, generate the certificate automatically
         CERT_PASSPHRASE="$${NEXT_PRIVATE_SIGNING_LOCAL_FILE_PASSPHRASE:-$$NEXT_PRIVATE_SIGNING_PASSPHRASE}"
         
+        # If no passphrase is provided, generate a random one automatically
         if [ -z "$$CERT_PASSPHRASE" ]; then
-          echo "Error: NEXT_PRIVATE_SIGNING_PASSPHRASE or NEXT_PRIVATE_SIGNING_LOCAL_FILE_PASSPHRASE must be set"
-          exit 1
+          echo "No passphrase provided, generating a random one automatically..."
+          CERT_PASSPHRASE="$$(openssl rand -base64 32 | tr -d '\n' || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
+          echo "Generated passphrase (save this if you need to backup/restore the certificate)"
+          # Export it so it's available for the application
+          export NEXT_PRIVATE_SIGNING_PASSPHRASE="$$CERT_PASSPHRASE"
+          export NEXT_PRIVATE_SIGNING_LOCAL_FILE_PASSPHRASE="$$CERT_PASSPHRASE"
         fi
         
         # Save original working directory
@@ -169,6 +176,10 @@ services:
         
         # Return to original directory before starting application
         cd "$$ORIGINAL_DIR"
+        
+        # Additional wait to ensure database is fully ready
+        echo "Waiting for database connection..."
+        sleep 3
         
         exec ./start.sh
 
