@@ -13,6 +13,8 @@ Before you begin, ensure that you have the following installed:
 
 This setup includes a PostgreSQL database and the Documenso application. You will need to provide your own SMTP details via environment variables.
 
+The Docker Compose file now supports automatic certificate generation, making it compatible with platforms like Dokploy, Coolify, and other container orchestration tools.
+
 1. Download the Docker Compose file from the Documenso repository: [compose.yml](https://raw.githubusercontent.com/documenso/documenso/release/docker/production/compose.yml)
 2. Navigate to the directory containing the `compose.yml` file.
 3. Create a `.env` file in the same directory and add your SMTP details as well as a few extra environment variables, following the example below:
@@ -25,6 +27,12 @@ NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY="<your-secondary-key>"
 
 # Your application URL
 NEXT_PUBLIC_WEBAPP_URL="<your-url>"
+NEXTAUTH_URL="http://<your-url>"
+
+# Database Configuration (optional, defaults provided)
+POSTGRES_USER=documenso
+POSTGRES_PASSWORD=password
+POSTGRES_DB=documenso
 
 # SMTP Configuration
 NEXT_PRIVATE_SMTP_TRANSPORT="smtp-auth"
@@ -35,15 +43,39 @@ NEXT_PRIVATE_SMTP_PASSWORD="<your-password>"
 NEXT_PRIVATE_SMTP_FROM_NAME="<your-from-name>"
 NEXT_PRIVATE_SMTP_FROM_ADDRESS="<your-from-email>"
 
-# Certificate passphrase (required)
+# Certificate Configuration
+# The certificate will be automatically generated if not mounted
 NEXT_PRIVATE_SIGNING_PASSPHRASE="<your-certificate-password>"
+# Optional: Certificate generation settings
+CERT_VALID_DAYS=365
+CERT_INFO_COUNTRY_NAME=US
+CERT_INFO_STATE_OR_PROVIDENCE=State
+CERT_INFO_LOCALITY_NAME=City
+CERT_INFO_ORGANIZATION_NAME=Organization
+CERT_INFO_ORGANIZATIONAL_UNIT=IT Department
+CERT_INFO_EMAIL=admin@example.com
 ```
 
 4. Set up your signing certificate. You have three options:
 
-   **Option A: Generate Certificate Inside Container (Recommended)**
+   **Option A: Automatic Certificate Generation (Recommended for Dokploy/Coolify)**
    
-   Start your containers first, then generate a self-signed certificate:
+   The certificate will be automatically generated on container startup if no certificate is mounted. This is the default behavior and works seamlessly with container orchestration platforms.
+   
+   The certificate will be generated in `/app/certs/cert.p12` using the passphrase from `NEXT_PRIVATE_SIGNING_PASSPHRASE` or `NEXT_PRIVATE_SIGNING_LOCAL_FILE_PASSPHRASE`.
+   
+   **Option B: Use Existing Certificate**
+   
+   If you have an existing `.p12` certificate, mount it as a volume. The entrypoint will detect the mounted certificate and use it instead of generating a new one:
+   
+   ```yaml
+   volumes:
+     - /path/to/your/cert.p12:/opt/documenso/cert.p12:ro
+   ```
+   
+   **Option C: Manual Certificate Generation (Legacy)**
+   
+   If you prefer to generate the certificate manually after container startup:
    ```bash
    # Start containers
    docker-compose up -d
@@ -67,15 +99,6 @@ NEXT_PRIVATE_SIGNING_PASSPHRASE="<your-certificate-password>"
    # Restart container
    docker-compose restart documenso
    ```
-   
-   **Option B: Use Existing Certificate**
-   
-   If you have an existing `.p12` certificate, update the volume binding in `compose.yml`:
-   ```yaml
-   volumes:
-     - /path/to/your/cert.p12:/opt/documenso/cert.p12:ro
-   ```
-   
 
 5. Run the following command to start the containers:
 
@@ -83,9 +106,22 @@ NEXT_PRIVATE_SIGNING_PASSPHRASE="<your-certificate-password>"
 docker-compose --env-file ./.env up -d
 ```
 
-This will start the PostgreSQL database and the Documenso application containers.
+This will start the PostgreSQL database and the Documenso application containers. The certificate will be automatically generated on first startup if not mounted.
 
-6. Access the Documenso application by visiting `http://localhost:3000` in your web browser.
+6. Access the Documenso application by visiting the URL you configured in `NEXT_PUBLIC_WEBAPP_URL` in your web browser.
+
+### Deployment on Dokploy/Coolify
+
+The Docker Compose file is now optimized for deployment on Dokploy, Coolify, and similar platforms:
+
+- **Automatic certificate generation**: Certificates are generated automatically on container startup
+- **Flexible database configuration**: Uses environment variables with sensible defaults
+- **No manual intervention required**: Everything is handled by the entrypoint script
+
+When deploying on Dokploy:
+1. Import the `compose.yml` file
+2. Set the required environment variables (especially `NEXT_PRIVATE_SIGNING_PASSPHRASE`)
+3. The certificate will be generated automatically using the hostname from `NEXT_PUBLIC_WEBAPP_URL`
 
 ## Option 2: Standalone Docker Container
 
