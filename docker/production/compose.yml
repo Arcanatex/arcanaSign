@@ -101,6 +101,10 @@ services:
           echo "Certificate generated successfully"
         fi
         
+        # Run database migrations
+        echo "Running database migrations..."
+        npx prisma migrate deploy --schema=/app/packages/prisma/schema.prisma
+        
         exec ./start.sh
 
 volumes:
