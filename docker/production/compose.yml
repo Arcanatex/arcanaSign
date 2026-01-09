@@ -77,28 +77,42 @@ services:
       - /bin/sh
       - -c
       - |
+        CERT_DIR="/opt/documenso"
+        CERT_FILE="$$CERT_DIR/cert.p12"
+        PASS_FILE="$$CERT_DIR/.passphrase"
+        
         # Generate certificate if it doesn't exist
-        if [ ! -f "/opt/documenso/cert.p12" ]; then
+        if [ ! -f "$$CERT_FILE" ]; then
           echo "Generating signing certificate..."
           
-          CERT_PASSPHRASE="$${NEXT_PRIVATE_SIGNING_PASSPHRASE:-$$(openssl rand -base64 32 | tr -d '\n')}"
-          
-          if [ -z "$$NEXT_PRIVATE_SIGNING_PASSPHRASE" ]; then
-            export NEXT_PRIVATE_SIGNING_PASSPHRASE="$$CERT_PASSPHRASE"
+          # Use provided passphrase or generate one
+          if [ -n "$$NEXT_PRIVATE_SIGNING_PASSPHRASE" ]; then
+            CERT_PASSPHRASE="$$NEXT_PRIVATE_SIGNING_PASSPHRASE"
+          else
+            CERT_PASSPHRASE="$$(openssl rand -base64 32 | tr -d '\n')"
             echo "Auto-generated certificate passphrase"
           fi
+          
+          # Save passphrase to file for persistence
+          echo "$$CERT_PASSPHRASE" > "$$PASS_FILE"
+          chmod 400 "$$PASS_FILE"
           
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout /tmp/private.key \
             -out /tmp/certificate.crt \
-            -subj "/C=FR/ST=France/L=Paris/O=ArcanaSign/CN=$${NEXT_PUBLIC_WEBAPP_URL:-localhost}"
+            -subj "/C=FR/ST=France/L=Paris/O=ArcanaSign/CN=localhost"
           
-          openssl pkcs12 -export -out /opt/documenso/cert.p12 \
+          openssl pkcs12 -export -out "$$CERT_FILE" \
             -inkey /tmp/private.key -in /tmp/certificate.crt \
             -passout pass:"$$CERT_PASSPHRASE"
           
-          rm /tmp/private.key /tmp/certificate.crt
+          rm -f /tmp/private.key /tmp/certificate.crt
           echo "Certificate generated successfully"
+        fi
+        
+        # Load passphrase from file if not set
+        if [ -z "$$NEXT_PRIVATE_SIGNING_PASSPHRASE" ] && [ -f "$$PASS_FILE" ]; then
+          export NEXT_PRIVATE_SIGNING_PASSPHRASE="$$(cat $$PASS_FILE)"
         fi
         
         # Run database migrations
