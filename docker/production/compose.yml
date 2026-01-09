@@ -16,6 +16,8 @@ services:
       start_period: 10s
     volumes:
       - database:/var/lib/postgresql/data
+    networks:
+      - dokploy-network
 
   documenso:
     image: documenso/documenso:latest
@@ -69,6 +71,8 @@ services:
       - ${PORT:-3000}
     volumes:
       - certs:/opt/documenso
+    networks:
+      - dokploy-network
     entrypoint:
       - /bin/sh
       - -c
@@ -102,3 +106,7 @@ services:
 volumes:
   database:
   certs:
+
+networks:
+  dokploy-network:
+    external: true
