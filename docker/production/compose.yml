@@ -3,6 +3,7 @@ name: documenso-production
 services:
   database:
     image: postgres:15
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:?err}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?err}
@@ -12,11 +13,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     volumes:
       - database:/var/lib/postgresql/data
 
   documenso:
     image: documenso/documenso:latest
+    restart: unless-stopped
     depends_on:
       database:
         condition: service_healthy
@@ -28,7 +31,7 @@ services:
       - NEXT_PRIVATE_GOOGLE_CLIENT_ID=${NEXT_PRIVATE_GOOGLE_CLIENT_ID}
       - NEXT_PRIVATE_GOOGLE_CLIENT_SECRET=${NEXT_PRIVATE_GOOGLE_CLIENT_SECRET}
       - NEXT_PUBLIC_WEBAPP_URL=${NEXT_PUBLIC_WEBAPP_URL:?err}
-      - NEXT_PRIVATE_INTERNAL_WEBAPP_URL=${NEXT_PRIVATE_INTERNAL_WEBAPP_URL:-http://localhost:$PORT}
+      - NEXT_PRIVATE_INTERNAL_WEBAPP_URL=${NEXT_PRIVATE_INTERNAL_WEBAPP_URL:-http://localhost:${PORT:-3000}}
       - NEXT_PRIVATE_DATABASE_URL=${NEXT_PRIVATE_DATABASE_URL:?err}
       - NEXT_PRIVATE_DIRECT_DATABASE_URL=${NEXT_PRIVATE_DIRECT_DATABASE_URL:-${NEXT_PRIVATE_DATABASE_URL}}
       - NEXT_PUBLIC_UPLOAD_TRANSPORT=${NEXT_PUBLIC_UPLOAD_TRANSPORT:-database}
@@ -65,7 +68,37 @@ services:
     ports:
       - ${PORT:-3000}:${PORT:-3000}
     volumes:
-      - /opt/documenso/cert.p12:/opt/documenso/cert.p12:ro
+      - certs:/opt/documenso
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        # Generate certificate if it doesn't exist
+        if [ ! -f "/opt/documenso/cert.p12" ]; then
+          echo "Generating signing certificate..."
+          
+          CERT_PASSPHRASE="$${NEXT_PRIVATE_SIGNING_PASSPHRASE:-$$(openssl rand -base64 32 | tr -d '\n')}"
+          
+          if [ -z "$$NEXT_PRIVATE_SIGNING_PASSPHRASE" ]; then
+            export NEXT_PRIVATE_SIGNING_PASSPHRASE="$$CERT_PASSPHRASE"
+            echo "Auto-generated certificate passphrase"
+          fi
+          
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /tmp/private.key \
+            -out /tmp/certificate.crt \
+            -subj "/C=FR/ST=France/L=Paris/O=ArcanaSign/CN=$${NEXT_PUBLIC_WEBAPP_URL:-localhost}"
+          
+          openssl pkcs12 -export -out /opt/documenso/cert.p12 \
+            -inkey /tmp/private.key -in /tmp/certificate.crt \
+            -passout pass:"$$CERT_PASSPHRASE"
+          
+          rm /tmp/private.key /tmp/certificate.crt
+          echo "Certificate generated successfully"
+        fi
+        
+        exec ./start.sh
 
 volumes:
   database:
+  certs:
